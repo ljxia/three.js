@@ -103,6 +103,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 		_canvas.height = _canvasHeight;
 
 		_clipRect.set( - _canvasWidthHalf, - _canvasHeightHalf, _canvasWidthHalf, _canvasHeightHalf );
+		_clearRect.set( - _canvasWidthHalf, - _canvasHeightHalf, _canvasWidthHalf, _canvasHeightHalf );
 
 		_contextGlobalAlpha = 1;
 		_contextGlobalCompositeOperation = 0;
@@ -119,12 +120,16 @@ THREE.CanvasRenderer = function ( parameters ) {
 		_clearColor = color;
 		_clearOpacity = opacity;
 
+		_clearRect.set( - _canvasWidthHalf, - _canvasHeightHalf, _canvasWidthHalf, _canvasHeightHalf );
+
 	};
 
 	this.setClearColorHex = function( hex, opacity ) {
 
 		_clearColor.setHex( hex );
 		_clearOpacity = opacity;
+
+		_clearRect.set( - _canvasWidthHalf, - _canvasHeightHalf, _canvasWidthHalf, _canvasHeightHalf );
 
 	};
 
