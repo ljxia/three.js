@@ -4,15 +4,19 @@
  * @author mikael emtinger / http://gomo.se/
  */
 
-THREE.Mesh = function ( geometry, materials ) {
+THREE.Mesh = function ( geometry, material ) {
 
 	THREE.Object3D.call( this );
 
 	this.geometry = geometry;
-	this.materials = materials && materials.length ? materials : [ materials ];
+	this.material = material;
 
-	this.overdraw = false; // TODO: Move to material?
+	if ( material instanceof Array ) {
 
+		console.warn( 'DEPRECATED: Mesh material can no longer be an Array. Using material at index 0...' );
+		this.material = material[ 0 ];
+
+	}
 
 	if ( this.geometry ) {
 
@@ -36,7 +40,7 @@ THREE.Mesh = function ( geometry, materials ) {
 			this.morphTargetInfluences = [];
 			this.morphTargetDictionary = {};
 
-			for( var m = 0; m < this.geometry.morphTargets.length; m++ ) {
+			for( var m = 0; m < this.geometry.morphTargets.length; m ++ ) {
 
 				this.morphTargetInfluences.push( 0 );
 				this.morphTargetDictionary[ this.geometry.morphTargets[ m ].name ] = m;
@@ -65,6 +69,7 @@ THREE.Mesh.prototype.getMorphTargetIndexByName = function( name ) {
 		return this.morphTargetDictionary[ name ];
 	}
 
-	console.log( "THREE.Mesh.getMorphTargetIndexByName: morph target " + name + " does not exist. Returning 0." );	
+	console.log( "THREE.Mesh.getMorphTargetIndexByName: morph target " + name + " does not exist. Returning 0." );
 	return 0;
+
 }

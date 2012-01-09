@@ -1,19 +1,15 @@
 /**
  * @author mr.doob / http://mrdoob.com/
- * @author mikael emtinger / http://gomo.se/
  */
 
 THREE.Scene = function () {
 
 	THREE.Object3D.call( this );
 
-	this.matrixAutoUpdate = false;
-
 	this.fog = null;
-
 	this.overrideMaterial = null;
 
-	this.collisions = null;
+	this.matrixAutoUpdate = false;
 
 	this.objects = [];
 	this.lights = [];
@@ -25,57 +21,51 @@ THREE.Scene = function () {
 
 THREE.Scene.prototype = new THREE.Object3D();
 THREE.Scene.prototype.constructor = THREE.Scene;
-THREE.Scene.prototype.supr = THREE.Object3D.prototype;
 
-THREE.Scene.prototype.addChild = function( child ) {
+THREE.Scene.prototype.addObject = function ( object ) {
 
-	this.supr.addChild.call( this, child );
-	this.addChildRecurse( child );
+	if ( object instanceof THREE.Light ) {
 
-}
+		if ( this.lights.indexOf( object ) === - 1 ) {
 
-THREE.Scene.prototype.addChildRecurse = function( child ) {
-
-	if ( child instanceof THREE.Light ) {
-
-		if ( this.lights.indexOf( child ) === -1 ) {
-
-			this.lights.push( child );
+			this.lights.push( object );
 
 		}
 
-	} else if ( !( child instanceof THREE.Camera || child instanceof THREE.Bone ) ) {
+	} else if ( !( object instanceof THREE.Camera || object instanceof THREE.Bone ) ) {
 
-		if ( this.objects.indexOf( child ) === -1 ) {
+		if ( this.objects.indexOf( object ) === - 1 ) {
 
-			this.objects.push( child );
-			this.__objectsAdded.push( child );
+			this.objects.push( object );
+			this.__objectsAdded.push( object );
+
+			// check if previously removed
+
+			var i = this.__objectsRemoved.indexOf( object );
+
+			if ( i !== -1 ) {
+
+				this.__objectsRemoved.splice( i, 1 );
+
+			}
 
 		}
 
 	}
 
-	for ( var c = 0; c < child.children.length; c++ ) {
+	for ( var c = 0; c < object.children.length; c ++ ) {
 
-		this.addChildRecurse( child.children[ c ] );
+		this.addObject( object.children[ c ] );
 
 	}
 
-}
+};
 
+THREE.Scene.prototype.removeObject = function ( object ) {
 
-THREE.Scene.prototype.removeChild = function( child ) {
+	if ( object instanceof THREE.Light ) {
 
-	this.supr.removeChild.call( this, child );
-	this.removeChildRecurse( child );
-
-}
-
-THREE.Scene.prototype.removeChildRecurse = function( child ) {
-
-	if ( child instanceof THREE.Light ) {
-
-		var i = this.lights.indexOf( child );
+		var i = this.lights.indexOf( object );
 
 		if ( i !== -1 ) {
 
@@ -83,28 +73,33 @@ THREE.Scene.prototype.removeChildRecurse = function( child ) {
 
 		}
 
-	} else if ( !( child instanceof THREE.Camera ) ) {
+	} else if ( !( object instanceof THREE.Camera ) ) {
 
-		var i = this.objects.indexOf( child );
+		var i = this.objects.indexOf( object );
 
 		if( i !== -1 ) {
 
 			this.objects.splice( i, 1 );
-			this.__objectsRemoved.push( child );
+			this.__objectsRemoved.push( object );
+
+			// check if previously added
+
+			var ai = this.__objectsAdded.indexOf( object );
+
+			if ( ai !== -1 ) {
+
+				this.__objectsAdded.splice( ai, 1 );
+
+			}
 
 		}
 
 	}
 
-	for ( var c = 0; c < child.children.length; c++ ) {
+	for ( var c = 0; c < object.children.length; c ++ ) {
 
-		this.removeChildRecurse( child.children[ c ] );
+		this.removeObject( object.children[ c ] );
 
 	}
 
-}
-
-THREE.Scene.prototype.addObject = THREE.Scene.prototype.addChild;
-THREE.Scene.prototype.removeObject = THREE.Scene.prototype.removeChild;
-THREE.Scene.prototype.addLight = THREE.Scene.prototype.addChild;
-THREE.Scene.prototype.removeLight = THREE.Scene.prototype.removeChild;
+};

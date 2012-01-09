@@ -5,7 +5,7 @@
 THREE.CanvasRenderer = function ( parameters ) {
 
 	var _this = this,
-	_renderList = null,
+	_renderData, _elements, _lights,
 	_projector = new THREE.Projector(),
 
 	parameters = parameters || {},
@@ -33,15 +33,17 @@ THREE.CanvasRenderer = function ( parameters ) {
 	_v1x, _v1y, _v2x, _v2y, _v3x, _v3y,
 	_v4x, _v4y, _v5x, _v5y, _v6x, _v6y,
 
-	_color = new THREE.Color( 0x000000 ),
-	_color1 = new THREE.Color( 0x000000 ),
-	_color2 = new THREE.Color( 0x000000 ),
-	_color3 = new THREE.Color( 0x000000 ),
-	_color4 = new THREE.Color( 0x000000 ),
+	_color = new THREE.Color(),
+	_color1 = new THREE.Color(),
+	_color2 = new THREE.Color(),
+	_color3 = new THREE.Color(),
+	_color4 = new THREE.Color(),
+
+	_patterns = [], _imagedatas = [],
 
 	_near, _far,
 
-	_bitmap, _uvs,
+	_image, _uvs,
 	_uv1x, _uv1y, _uv2x, _uv2y, _uv3x, _uv3y,
 
 	_clipRect = new THREE.Rectangle(),
@@ -49,7 +51,6 @@ THREE.CanvasRenderer = function ( parameters ) {
 	_bboxRect = new THREE.Rectangle(),
 
 	_enableLighting = false,
-	_light = new THREE.Color(),
 	_ambientLight = new THREE.Color(),
 	_directionalLights = new THREE.Color(),
 	_pointLights = new THREE.Color(),
@@ -85,10 +86,14 @@ THREE.CanvasRenderer = function ( parameters ) {
 	this.sortObjects = true;
 	this.sortElements = true;
 
-	this.data = {
+	this.info = {
 
-		vertices: 0,
-		faces: 0
+		render: {
+
+			vertices: 0,
+			faces: 0
+
+		}
 
 	}
 
@@ -96,8 +101,8 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 		_canvasWidth = width;
 		_canvasHeight = height;
-		_canvasWidthHalf = _canvasWidth / 2;
-		_canvasHeightHalf = _canvasHeight / 2;
+		_canvasWidthHalf = Math.floor( _canvasWidth / 2 );
+		_canvasHeightHalf = Math.floor( _canvasHeight / 2 );
 
 		_canvas.width = _canvasWidth;
 		_canvas.height = _canvasHeight;
@@ -117,7 +122,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 	this.setClearColor = function( color, opacity ) {
 
-		_clearColor = color;
+		_clearColor.copy( color );
 		_clearOpacity = opacity;
 
 		_clearRect.set( - _canvasWidthHalf, - _canvasHeightHalf, _canvasWidthHalf, _canvasHeightHalf );
@@ -139,20 +144,23 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 		if ( !_clearRect.isEmpty() ) {
 
-			_clearRect.inflate( 1 );
 			_clearRect.minSelf( _clipRect );
+			_clearRect.inflate( 2 );
 
-			if ( _clearColor.hex == 0x000000 && _clearOpacity == 0 ) {
+			if ( _clearOpacity < 1 ) {
 
-				_context.clearRect( _clearRect.getX(), _clearRect.getY(), _clearRect.getWidth(), _clearRect.getHeight() );
+				_context.clearRect( Math.floor( _clearRect.getX() ), Math.floor( _clearRect.getY() ), Math.floor( _clearRect.getWidth() ), Math.floor( _clearRect.getHeight() ) );
 
-			} else {
+			}
+
+			if ( _clearOpacity > 0 ) {
 
 				setBlending( THREE.NormalBlending );
 				setOpacity( 1 );
 
-				_context.fillStyle = 'rgba(' + Math.floor( _clearColor.r * 255 ) + ',' + Math.floor( _clearColor.g * 255 ) + ',' + Math.floor( _clearColor.b * 255 ) + ',' + _clearOpacity + ')';
-				_context.fillRect( _clearRect.getX(), _clearRect.getY(), _clearRect.getWidth(), _clearRect.getHeight() );
+				setFillStyle( 'rgba(' + Math.floor( _clearColor.r * 255 ) + ',' + Math.floor( _clearColor.g * 255 ) + ',' + Math.floor( _clearColor.b * 255 ) + ',' + _clearOpacity + ')' );
+
+				_context.fillRect( Math.floor( _clearRect.getX() ), Math.floor( _clearRect.getY() ), Math.floor( _clearRect.getWidth() ), Math.floor( _clearRect.getHeight() ) );
 
 			}
 
@@ -160,35 +168,43 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 		}
 
+
 	};
 
 	this.render = function ( scene, camera ) {
 
-		var e, el, element, m, ml, fm, fml, material;
+		var e, el, element, material;
 
 		this.autoClear ? this.clear() : _context.setTransform( 1, 0, 0, - 1, _canvasWidthHalf, _canvasHeightHalf );
 
-		_this.data.vertices = 0;
-		_this.data.faces = 0;
+		_this.info.render.vertices = 0;
+		_this.info.render.faces = 0;
 
-		_renderList = _projector.projectScene( scene, camera, this.sortElements );
+		_renderData = _projector.projectScene( scene, camera, this.sortElements );
+		_elements = _renderData.elements;
+		_lights = _renderData.lights;
 
 		/* DEBUG
 		_context.fillStyle = 'rgba( 0, 255, 255, 0.5 )';
 		_context.fillRect( _clipRect.getX(), _clipRect.getY(), _clipRect.getWidth(), _clipRect.getHeight() );
 		*/
 
-		_enableLighting = scene.lights.length > 0;
+		_enableLighting = _lights.length > 0;
 
 		if ( _enableLighting ) {
 
-			 calculateLights( scene );
+			 calculateLights( _lights );
 
 		}
 
-		for ( e = 0, el = _renderList.length; e < el; e++ ) {
+		for ( e = 0, el = _elements.length; e < el; e++ ) {
 
-			element = _renderList[ e ];
+			element = _elements[ e ];
+
+			material = element.material;
+			material = material instanceof THREE.MeshFaceMaterial ? element.faceMaterial : material;
+
+			if ( material == null || material.opacity == 0 ) continue;
 
 			_bboxRect.empty();
 
@@ -197,14 +213,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 				_v1 = element;
 				_v1.x *= _canvasWidthHalf; _v1.y *= _canvasHeightHalf;
 
-				m = 0; ml = element.materials.length;
-
-				while( m < ml ) {
-
-					material = element.materials[ m ++ ];
-					material.opacity != 0 && renderParticle( _v1, element, material, scene );
-
-				}
+				renderParticle( _v1, element, material, scene );
 
 			} else if ( element instanceof THREE.RenderableLine ) {
 
@@ -216,16 +225,9 @@ THREE.CanvasRenderer = function ( parameters ) {
 				_bboxRect.addPoint( _v1.positionScreen.x, _v1.positionScreen.y );
 				_bboxRect.addPoint( _v2.positionScreen.x, _v2.positionScreen.y );
 
-				if ( _clipRect.instersects( _bboxRect ) ) {
+				if ( _clipRect.intersects( _bboxRect ) ) {
 
-					m = 0; ml = element.materials.length;
-
-					while ( m < ml ) {
-
-						material = element.materials[ m ++ ];
-						material.opacity != 0 && renderLine( _v1, _v2, element, material, scene );
-
-					}
+					renderLine( _v1, _v2, element, material, scene );
 
 				}
 
@@ -238,7 +240,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 				_v2.positionScreen.x *= _canvasWidthHalf; _v2.positionScreen.y *= _canvasHeightHalf;
 				_v3.positionScreen.x *= _canvasWidthHalf; _v3.positionScreen.y *= _canvasHeightHalf;
 
-				if ( element.overdraw ) {
+				if ( material.overdraw ) {
 
 					expand( _v1.positionScreen, _v2.positionScreen );
 					expand( _v2.positionScreen, _v3.positionScreen );
@@ -250,32 +252,9 @@ THREE.CanvasRenderer = function ( parameters ) {
 						      _v2.positionScreen.x, _v2.positionScreen.y,
 						      _v3.positionScreen.x, _v3.positionScreen.y );
 
-				if ( _clipRect.instersects( _bboxRect ) ) {
+				if ( _clipRect.intersects( _bboxRect ) ) {
 
-					m = 0; ml = element.meshMaterials.length;
-
-					while ( m < ml ) {
-
-						material = element.meshMaterials[ m ++ ];
-
-						if ( material instanceof THREE.MeshFaceMaterial ) {
-
-							fm = 0; fml = element.faceMaterials.length;
-
-							while ( fm < fml ) {
-
-								material = element.faceMaterials[ fm ++ ];
-								material && material.opacity != 0 && renderFace3( _v1, _v2, _v3, 0, 1, 2, element, material, scene );
-
-							}
-
-							continue;
-
-						}
-
-						material.opacity != 0 && renderFace3( _v1, _v2, _v3, 0, 1, 2, element, material, scene );
-
-					}
+					renderFace3( _v1, _v2, _v3, 0, 1, 2, element, material, scene );
 
 				}
 
@@ -291,7 +270,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 				_v5.positionScreen.copy( _v2.positionScreen );
 				_v6.positionScreen.copy( _v4.positionScreen );
 
-				if ( element.overdraw ) {
+				if ( material.overdraw ) {
 
 					expand( _v1.positionScreen, _v2.positionScreen );
 					expand( _v2.positionScreen, _v4.positionScreen );
@@ -307,32 +286,9 @@ THREE.CanvasRenderer = function ( parameters ) {
 				_bboxRect.addPoint( _v3.positionScreen.x, _v3.positionScreen.y );
 				_bboxRect.addPoint( _v4.positionScreen.x, _v4.positionScreen.y );
 
-				if ( _clipRect.instersects( _bboxRect ) ) {
+				if ( _clipRect.intersects( _bboxRect ) ) {
 
-					m = 0; ml = element.meshMaterials.length;
-
-					while ( m < ml ) {
-
-						material = element.meshMaterials[ m ++ ];
-
-						if ( material instanceof THREE.MeshFaceMaterial ) {
-
-							fm = 0; fml = element.faceMaterials.length;
-
-							while ( fm < fml ) {
-
-								material = element.faceMaterials[ fm ++ ];
-								material && material.opacity != 0 && renderFace4( _v1, _v2, _v3, _v4, _v5, _v6, element, material, scene );
-
-							}
-
-							continue;
-
-						}
-
-						material.opacity != 0 && renderFace4( _v1, _v2, _v3, _v4, _v5, _v6, element, material, scene );
-
-					}
+					renderFace4( _v1, _v2, _v3, _v4, _v5, _v6, element, material, scene );
 
 				}
 
@@ -359,10 +315,9 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 		//
 
-		function calculateLights( scene ) {
+		function calculateLights( lights ) {
 
-			var l, ll, light, lightColor,
-			lights = scene.lights;
+			var l, ll, light, lightColor;
 
 			_ambientLight.setRGB( 0, 0, 0 );
 			_directionalLights.setRGB( 0, 0, 0 );
@@ -401,10 +356,9 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 		}
 
-		function calculateLight( scene, position, normal, color ) {
+		function calculateLight( lights, position, normal, color ) {
 
-			var l, ll, light, lightColor,
-			amount, lights = scene.lights;
+			var l, ll, light, lightColor, lightPosition, amount;
 
 			for ( l = 0, ll = lights.length; l < ll; l ++ ) {
 
@@ -413,7 +367,9 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 				if ( light instanceof THREE.DirectionalLight ) {
 
-					amount = normal.dot( light.position );
+					lightPosition = light.matrixWorld.getPosition();
+
+					amount = normal.dot( lightPosition );
 
 					if ( amount <= 0 ) continue;
 
@@ -425,11 +381,13 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 				} else if ( light instanceof THREE.PointLight ) {
 
-					amount = normal.dot( _vector3.sub( light.position, position ).normalize() );
+					lightPosition = light.matrixWorld.getPosition();
+
+					amount = normal.dot( _vector3.sub( lightPosition, position ).normalize() );
 
 					if ( amount <= 0 ) continue;
 
-					amount *= light.distance == 0 ? 1 : 1 - Math.min( position.distanceTo( light.position ) / light.distance, 1 );
+					amount *= light.distance == 0 ? 1 : 1 - Math.min( position.distanceTo( lightPosition ) / light.distance, 1 );
 
 					if ( amount == 0 ) continue;
 
@@ -471,7 +429,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 					_bboxRect.set( v1.x - width, v1.y - height, v1.x  + width, v1.y + height );
 
-					if ( !_clipRect.instersects( _bboxRect ) ) {
+					if ( !_clipRect.intersects( _bboxRect ) ) {
 
 						return;
 
@@ -507,14 +465,14 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 				_bboxRect.set( v1.x - width, v1.y - height, v1.x + width, v1.y + height );
 
-				if ( !_clipRect.instersects( _bboxRect ) ) {
+				if ( !_clipRect.intersects( _bboxRect ) ) {
 
 					return;
 
 				}
 
-				setStrokeStyle( material.color );
-				setFillStyle( material.color );
+				setStrokeStyle( material.color.getContextStyle() );
+				setFillStyle( material.color.getContextStyle() );
 
 				_context.save();
 				_context.translate( v1.x, v1.y );
@@ -544,7 +502,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 				setLineWidth( material.linewidth );
 				setLineCap( material.linecap );
 				setLineJoin( material.linejoin );
-				setStrokeStyle( material.color );
+				setStrokeStyle( material.color.getContextStyle() );
 
 				_context.stroke();
 				_bboxRect.inflate( material.linewidth * 2 );
@@ -555,8 +513,8 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 		function renderFace3( v1, v2, v3, uv1, uv2, uv3, element, material, scene ) {
 
-			_this.data.vertices += 3;
-			_this.data.faces ++;
+			_this.info.render.vertices += 3;
+			_this.info.render.faces ++;
 
 			setOpacity( material.opacity );
 			setBlending( material.blending );
@@ -574,7 +532,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 					if ( material.map.mapping instanceof THREE.UVMapping ) {
 
 						_uvs = element.uvs[ 0 ];
-						texturePath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, material.map.image, _uvs[ uv1 ].u, _uvs[ uv1 ].v, _uvs[ uv2 ].u, _uvs[ uv2 ].v, _uvs[ uv3 ].u, _uvs[ uv3 ].v );
+						patternPath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _uvs[ uv1 ].u, _uvs[ uv1 ].v, _uvs[ uv2 ].u, _uvs[ uv2 ].v, _uvs[ uv3 ].u, _uvs[ uv3 ].v, material.map );
 
 					}
 
@@ -585,19 +543,19 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 						var cameraMatrix = camera.matrixWorldInverse;
 
-						_vector3.copy( element.vertexNormalsWorld[ 0 ] );
+						_vector3.copy( element.vertexNormalsWorld[ uv1 ] );
 						_uv1x = ( _vector3.x * cameraMatrix.n11 + _vector3.y * cameraMatrix.n12 + _vector3.z * cameraMatrix.n13 ) * 0.5 + 0.5;
 						_uv1y = - ( _vector3.x * cameraMatrix.n21 + _vector3.y * cameraMatrix.n22 + _vector3.z * cameraMatrix.n23 ) * 0.5 + 0.5;
 
-						_vector3.copy( element.vertexNormalsWorld[ 1 ] );
+						_vector3.copy( element.vertexNormalsWorld[ uv2 ] );
 						_uv2x = ( _vector3.x * cameraMatrix.n11 + _vector3.y * cameraMatrix.n12 + _vector3.z * cameraMatrix.n13 ) * 0.5 + 0.5;
 						_uv2y = - ( _vector3.x * cameraMatrix.n21 + _vector3.y * cameraMatrix.n22 + _vector3.z * cameraMatrix.n23 ) * 0.5 + 0.5;
 
-						_vector3.copy( element.vertexNormalsWorld[ 2 ] );
+						_vector3.copy( element.vertexNormalsWorld[ uv3 ] );
 						_uv3x = ( _vector3.x * cameraMatrix.n11 + _vector3.y * cameraMatrix.n12 + _vector3.z * cameraMatrix.n13 ) * 0.5 + 0.5;
 						_uv3y = - ( _vector3.x * cameraMatrix.n21 + _vector3.y * cameraMatrix.n22 + _vector3.z * cameraMatrix.n23 ) * 0.5 + 0.5;
 
-						texturePath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, material.envMap.image, _uv1x, _uv1y, _uv2x, _uv2y, _uv3x, _uv3y );
+						patternPath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _uv1x, _uv1y, _uv2x, _uv2y, _uv3x, _uv3y, material.envMap );
 
 					}/* else if ( material.envMap.mapping == THREE.SphericalRefractionMapping ) {
 
@@ -619,7 +577,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 					if ( material.map.mapping instanceof THREE.UVMapping ) {
 
 						_uvs = element.uvs[ 0 ];
-						texturePath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, material.map.image, _uvs[ uv1 ].u, _uvs[ uv1 ].v, _uvs[ uv2 ].u, _uvs[ uv2 ].v, _uvs[ uv3 ].u, _uvs[ uv3 ].v );
+						patternPath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _uvs[ uv1 ].u, _uvs[ uv1 ].v, _uvs[ uv2 ].u, _uvs[ uv2 ].v, _uvs[ uv3 ].u, _uvs[ uv3 ].v, material.map );
 
 					}
 
@@ -635,30 +593,41 @@ THREE.CanvasRenderer = function ( parameters ) {
 						_color1.g = _color2.g = _color3.g = _ambientLight.g;
 						_color1.b = _color2.b = _color3.b = _ambientLight.b;
 
-						calculateLight( scene, element.v1.positionWorld, element.vertexNormalsWorld[ 0 ], _color1 );
-						calculateLight( scene, element.v2.positionWorld, element.vertexNormalsWorld[ 1 ], _color2 );
-						calculateLight( scene, element.v3.positionWorld, element.vertexNormalsWorld[ 2 ], _color3 );
+						calculateLight( _lights, element.v1.positionWorld, element.vertexNormalsWorld[ 0 ], _color1 );
+						calculateLight( _lights, element.v2.positionWorld, element.vertexNormalsWorld[ 1 ], _color2 );
+						calculateLight( _lights, element.v3.positionWorld, element.vertexNormalsWorld[ 2 ], _color3 );
 
-						_color4.r =  ( _color2.r + _color3.r ) * 0.5;
+						_color1.r = Math.max( 0, Math.min( material.color.r * _color1.r, 1 ) );
+						_color1.g = Math.max( 0, Math.min( material.color.g * _color1.g, 1 ) );
+						_color1.b = Math.max( 0, Math.min( material.color.b * _color1.b, 1 ) );
+
+						_color2.r = Math.max( 0, Math.min( material.color.r * _color2.r, 1 ) );
+						_color2.g = Math.max( 0, Math.min( material.color.g * _color2.g, 1 ) );
+						_color2.b = Math.max( 0, Math.min( material.color.b * _color2.b, 1 ) );
+
+						_color3.r = Math.max( 0, Math.min( material.color.r * _color3.r, 1 ) );
+						_color3.g = Math.max( 0, Math.min( material.color.g * _color3.g, 1 ) );
+						_color3.b = Math.max( 0, Math.min( material.color.b * _color3.b, 1 ) );
+
+						_color4.r = ( _color2.r + _color3.r ) * 0.5;
 						_color4.g = ( _color2.g + _color3.g ) * 0.5;
 						_color4.b = ( _color2.b + _color3.b ) * 0.5;
 
-						_bitmap = getGradientTexture( _color1, _color2, _color3, _color4 );
+						_image = getGradientTexture( _color1, _color2, _color3, _color4 );
 
-						texturePath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _bitmap, 0, 0, 1, 0, 0, 1 );
+						clipImage( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, 0, 0, 1, 0, 0, 1, _image );
 
 					} else {
 
-						_light.r = _ambientLight.r;
-						_light.g = _ambientLight.g;
-						_light.b = _ambientLight.b;
+						_color.r = _ambientLight.r;
+						_color.g = _ambientLight.g;
+						_color.b = _ambientLight.b;
 
-						calculateLight( scene, element.centroidWorld, element.normalWorld, _light );
+						calculateLight( _lights, element.centroidWorld, element.normalWorld, _color );
 
-						_color.r = Math.max( 0, Math.min( material.color.r * _light.r, 1 ) );
-						_color.g = Math.max( 0, Math.min( material.color.g * _light.g, 1 ) );
-						_color.b = Math.max( 0, Math.min( material.color.b * _light.b, 1 ) );
-						_color.updateHex();
+						_color.r = Math.max( 0, Math.min( material.color.r * _color.r, 1 ) );
+						_color.g = Math.max( 0, Math.min( material.color.g * _color.g, 1 ) );
+						_color.b = Math.max( 0, Math.min( material.color.b * _color.b, 1 ) );
 
 						material.wireframe ? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin ) : fillPath( _color );
 
@@ -683,16 +652,15 @@ THREE.CanvasRenderer = function ( parameters ) {
 				_color4.g = ( _color2.g + _color3.g ) * 0.5;
 				_color4.b = ( _color2.b + _color3.b ) * 0.5;
 
-				_bitmap = getGradientTexture( _color1, _color2, _color3, _color4 );
+				_image = getGradientTexture( _color1, _color2, _color3, _color4 );
 
-				texturePath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _bitmap, 0, 0, 1, 0, 0, 1 );
+				clipImage( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, 0, 0, 1, 0, 0, 1, _image );
 
 			} else if ( material instanceof THREE.MeshNormalMaterial ) {
 
 				_color.r = normalToComponent( element.normalWorld.x );
 				_color.g = normalToComponent( element.normalWorld.y );
 				_color.b = normalToComponent( element.normalWorld.z );
-				_color.updateHex();
 
 				material.wireframe ? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin ) : fillPath( _color );
 
@@ -702,8 +670,8 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 		function renderFace4( v1, v2, v3, v4, v5, v6, element, material, scene ) {
 
-			_this.data.vertices += 4;
-			_this.data.faces ++;
+			_this.info.render.vertices += 4;
+			_this.info.render.faces ++;
 
 			setOpacity( material.opacity );
 			setBlending( material.blending );
@@ -742,33 +710,48 @@ THREE.CanvasRenderer = function ( parameters ) {
 						_color1.g = _color2.g = _color3.g = _color4.g = _ambientLight.g;
 						_color1.b = _color2.b = _color3.b = _color4.b = _ambientLight.b;
 
-						calculateLight( scene, element.v1.positionWorld, element.vertexNormalsWorld[ 0 ], _color1 );
-						calculateLight( scene, element.v2.positionWorld, element.vertexNormalsWorld[ 1 ], _color2 );
-						calculateLight( scene, element.v4.positionWorld, element.vertexNormalsWorld[ 3 ], _color3 );
-						calculateLight( scene, element.v3.positionWorld, element.vertexNormalsWorld[ 2 ], _color4 );
+						calculateLight( _lights, element.v1.positionWorld, element.vertexNormalsWorld[ 0 ], _color1 );
+						calculateLight( _lights, element.v2.positionWorld, element.vertexNormalsWorld[ 1 ], _color2 );
+						calculateLight( _lights, element.v4.positionWorld, element.vertexNormalsWorld[ 3 ], _color3 );
+						calculateLight( _lights, element.v3.positionWorld, element.vertexNormalsWorld[ 2 ], _color4 );
 
-						_bitmap = getGradientTexture( _color1, _color2, _color3, _color4 );
+						_color1.r = Math.max( 0, Math.min( material.color.r * _color1.r, 1 ) );
+						_color1.g = Math.max( 0, Math.min( material.color.g * _color1.g, 1 ) );
+						_color1.b = Math.max( 0, Math.min( material.color.b * _color1.b, 1 ) );
+
+						_color2.r = Math.max( 0, Math.min( material.color.r * _color2.r, 1 ) );
+						_color2.g = Math.max( 0, Math.min( material.color.g * _color2.g, 1 ) );
+						_color2.b = Math.max( 0, Math.min( material.color.b * _color2.b, 1 ) );
+
+						_color3.r = Math.max( 0, Math.min( material.color.r * _color3.r, 1 ) );
+						_color3.g = Math.max( 0, Math.min( material.color.g * _color3.g, 1 ) );
+						_color3.b = Math.max( 0, Math.min( material.color.b * _color3.b, 1 ) );
+
+						_color4.r = Math.max( 0, Math.min( material.color.r * _color4.r, 1 ) );
+						_color4.g = Math.max( 0, Math.min( material.color.g * _color4.g, 1 ) );
+						_color4.b = Math.max( 0, Math.min( material.color.b * _color4.b, 1 ) );
+
+						_image = getGradientTexture( _color1, _color2, _color3, _color4 );
 
 						// TODO: UVs are incorrect, v4->v3?
 
 						drawTriangle( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y );
-						texturePath( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y, _bitmap, 0, 0, 1, 0, 0, 1 );
+						clipImage( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y, 0, 0, 1, 0, 0, 1, _image );
 
 						drawTriangle( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y );
-						texturePath( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y, _bitmap, 1, 0, 1, 1, 0, 1 );
+						clipImage( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y, 1, 0, 1, 1, 0, 1, _image );
 
 					} else {
 
-						_light.r = _ambientLight.r;
-						_light.g = _ambientLight.g;
-						_light.b = _ambientLight.b;
+						_color.r = _ambientLight.r;
+						_color.g = _ambientLight.g;
+						_color.b = _ambientLight.b;
 
-						calculateLight( scene, element.centroidWorld, element.normalWorld, _light );
+						calculateLight( _lights, element.centroidWorld, element.normalWorld, _color );
 
-						_color.r = Math.max( 0, Math.min( material.color.r * _light.r, 1 ) );
-						_color.g = Math.max( 0, Math.min( material.color.g * _light.g, 1 ) );
-						_color.b = Math.max( 0, Math.min( material.color.b * _light.b, 1 ) );
-						_color.updateHex();
+						_color.r = Math.max( 0, Math.min( material.color.r * _color.r, 1 ) );
+						_color.g = Math.max( 0, Math.min( material.color.g * _color.g, 1 ) );
+						_color.b = Math.max( 0, Math.min( material.color.b * _color.b, 1 ) );
 
 						drawQuad( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _v4x, _v4y );
 
@@ -789,7 +772,6 @@ THREE.CanvasRenderer = function ( parameters ) {
 				_color.r = normalToComponent( element.normalWorld.x );
 				_color.g = normalToComponent( element.normalWorld.y );
 				_color.b = normalToComponent( element.normalWorld.z );
-				_color.updateHex();
 
 				drawQuad( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _v4x, _v4y );
 
@@ -805,15 +787,15 @@ THREE.CanvasRenderer = function ( parameters ) {
 				_color3.r = _color3.g = _color3.b = 1 - smoothstep( v4.positionScreen.z, _near, _far );
 				_color4.r = _color4.g = _color4.b = 1 - smoothstep( v3.positionScreen.z, _near, _far );
 
-				_bitmap = getGradientTexture( _color1, _color2, _color3, _color4 );
+				_image = getGradientTexture( _color1, _color2, _color3, _color4 );
 
 				// TODO: UVs are incorrect, v4->v3?
 
 				drawTriangle( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y );
-				texturePath( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y, _bitmap, 0, 0, 1, 0, 0, 1 );
+				clipImage( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y, 0, 0, 1, 0, 0, 1, _image );
 
 				drawTriangle( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y );
-				texturePath( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y, _bitmap, 1, 0, 1, 1, 0, 1 );
+				clipImage( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y, 1, 0, 1, 1, 0, 1, _image );
 
 			}
 
@@ -849,7 +831,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 			setLineWidth( linewidth );
 			setLineCap( linecap );
 			setLineJoin( linejoin );
-			setStrokeStyle( color );
+			setStrokeStyle( color.getContextStyle() );
 
 			_context.stroke();
 
@@ -859,49 +841,104 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 		function fillPath( color ) {
 
-			setFillStyle( color );
+			setFillStyle( color.getContextStyle() );
 			_context.fill();
 
 		}
 
-		function texturePath( x0, y0, x1, y1, x2, y2, bitmap, u0, v0, u1, v1, u2, v2 ) {
+		function patternPath( x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2, texture ) {
 
-			/*
-			// http://tulrich.com/geekstuff/canvas/jsgl.js
+			if ( texture.image.width == 0 ) return;
 
-			var m11, m12, m21, m22, dx, dy, denom,
-			width = bitmap.width - 1,
-			height = bitmap.height - 1;
+			if ( texture.needsUpdate == true || _patterns[ texture.id ] == undefined ) {
 
-			u0 *= width; v0 *= height;
-			u1 *= width; v1 *= height;
-			u2 *= width; v2 *= height;
+				var repeatX = texture.wrapS == THREE.RepeatWrapping;
+				var repeatY = texture.wrapT == THREE.RepeatWrapping;
 
-			_context.save();
+				_patterns[ texture.id ] = _context.createPattern( texture.image, repeatX && repeatY ? 'repeat' : repeatX && !repeatY ? 'repeat-x' : !repeatX && repeatY ? 'repeat-y' : 'no-repeat' );
 
-			denom = u0 * (v2 - v1) - u1 * v2 + u2 * v1 + (u1 - u2) * v0;
+				texture.needsUpdate = false;
 
-			if ( denom == 0 ) return;
+			}
 
-			m11 = - (v0 * (x2 - x1) - v1 * x2 + v2 * x1 + (v1 - v2) * x0) / denom;
-			m12 = (v1 * y2 + v0 * (y1 - y2) - v2 * y1 + (v2 - v1) * y0) / denom;
-			m21 = (u0 * (x2 - x1) - u1 * x2 + u2 * x1 + (u1 - u2) * x0) / denom;
-			m22 = - (u1 * y2 + u0 * (y1 - y2) - u2 * y1 + (u2 - u1) * y0) / denom;
-			dx = (u0 * (v2 * x1 - v1 * x2) + v0 * (u1 * x2 - u2 * x1) + (u2 * v1 - u1 * v2) * x0) / denom;
-			dy = (u0 * (v2 * y1 - v1 * y2) + v0 * (u1 * y2 - u2 * y1) + (u2 * v1 - u1 * v2) * y0) / denom;
-
-			_context.transform( m11, m12, m21, m22, dx, dy );
-
-			_context.clip();
-			_context.drawImage( bitmap, 0, 0 );
-			_context.restore();
-			*/
+			setFillStyle( _patterns[ texture.id ] );
 
 			// http://extremelysatisfactorytotalitarianism.com/blog/?p=2120
 
 			var a, b, c, d, e, f, det, idet,
-			width = bitmap.width - 1,
-			height = bitmap.height - 1;
+			offsetX = texture.offset.x / texture.repeat.x,
+			offsetY = texture.offset.y / texture.repeat.y,
+			width = texture.image.width * texture.repeat.x,
+			height = texture.image.height * texture.repeat.y;
+
+			u0 = ( u0 + offsetX ) * width;
+			v0 = ( v0 + offsetY ) * height;
+
+			u1 = ( u1 + offsetX ) * width;
+			v1 = ( v1 + offsetY ) * height;
+
+			u2 = ( u2 + offsetX ) * width;
+			v2 = ( v2 + offsetY ) * height;
+
+			x1 -= x0; y1 -= y0;
+			x2 -= x0; y2 -= y0;
+
+			u1 -= u0; v1 -= v0;
+			u2 -= u0; v2 -= v0;
+
+			det = u1 * v2 - u2 * v1;
+
+			if ( det == 0 ) {
+
+				if ( _imagedatas[ texture.id ] == undefined ) {
+
+					var canvas = document.createElement( 'canvas' )
+					canvas.width = texture.image.width;
+					canvas.height = texture.image.height;
+
+					var context = canvas.getContext( '2d' );
+					context.drawImage( texture.image, 0, 0 );
+
+					_imagedatas[ texture.id ] = context.getImageData( 0, 0, texture.image.width, texture.image.height ).data;
+
+					delete canvas;
+
+				}
+
+				var data = _imagedatas[ texture.id ];
+				var index = ( Math.floor( u0 ) + Math.floor( v0 ) * texture.image.width ) * 4;
+
+				_color.setRGB( data[ index ] / 255, data[ index + 1 ] / 255, data[ index + 2 ] / 255 );
+				fillPath( _color );
+
+				return;
+
+			}
+
+			idet = 1 / det;
+
+			a = ( v2 * x1 - v1 * x2 ) * idet;
+			b = ( v2 * y1 - v1 * y2 ) * idet;
+			c = ( u1 * x2 - u2 * x1 ) * idet;
+			d = ( u1 * y2 - u2 * y1 ) * idet;
+
+			e = x0 - a * u0 - c * v0;
+			f = y0 - b * u0 - d * v0;
+
+			_context.save();
+			_context.transform( a, b, c, d, e, f );
+			_context.fill();
+			_context.restore();
+
+		}
+
+		function clipImage( x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2, image ) {
+
+			// http://extremelysatisfactorytotalitarianism.com/blog/?p=2120
+
+			var a, b, c, d, e, f, det, idet,
+			width = image.width - 1,
+			height = image.height - 1;
 
 			u0 *= width; v0 *= height;
 			u1 *= width; v1 *= height;
@@ -914,8 +951,6 @@ THREE.CanvasRenderer = function ( parameters ) {
 			u2 -= u0; v2 -= v0;
 
 			det = u1 * v2 - u2 * v1;
-
-			if ( /*Math.abs*/ ( det < 0 ? - det : det ) < 1 ) return;
 
 			idet = 1 / det;
 
@@ -930,7 +965,7 @@ THREE.CanvasRenderer = function ( parameters ) {
 			_context.save();
 			_context.transform( a, b, c, d, e, f );
 			_context.clip();
-			_context.drawImage( bitmap, 0, 0 );
+			_context.drawImage( image, 0, 0 );
 			_context.restore();
 
 		}
@@ -968,11 +1003,6 @@ THREE.CanvasRenderer = function ( parameters ) {
 		}
 
 		function smoothstep( value, min, max ) {
-
-			/*
-			if ( value <= min ) return 0;
-			if ( value >= max ) return 1;
-			*/
 
 			var x = ( value - min ) / ( max - min );
 			return x * x * ( 3 - 2 * x );
@@ -1083,32 +1113,23 @@ THREE.CanvasRenderer = function ( parameters ) {
 
 	}
 
-	function setStrokeStyle( color ) {
+	function setStrokeStyle( style ) {
 
-		if ( _contextStrokeStyle != color.hex ) {
+		if ( _contextStrokeStyle != style ) {
 
-			_contextStrokeStyle = color.hex;
-			_context.strokeStyle = '#' + pad( _contextStrokeStyle.toString( 16 ) );
-
-		}
-
-	}
-
-	function setFillStyle( color ) {
-
-		if ( _contextFillStyle != color.hex ) {
-
-			_contextFillStyle = color.hex;
-			_context.fillStyle = '#' + pad( _contextFillStyle.toString( 16 ) );
+			_context.strokeStyle = _contextStrokeStyle = style;
 
 		}
 
 	}
 
-	function pad( str ) {
+	function setFillStyle( style ) {
 
-		while ( str.length < 6 ) str = '0' + str;
-		return str;
+		if ( _contextFillStyle != style ) {
+
+			_context.fillStyle = _contextFillStyle = style;
+
+		}
 
 	}
 

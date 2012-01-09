@@ -1,9 +1,10 @@
-<!DOCTYPE HTML>
+<!doctype html>
 <html lang="en">
 	<head>
 		<title>three.js webgl - geometry - large mesh</title>
 		<meta charset="utf-8">
-		<style type="text/css">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
 			body {
 				background:#000;
 				color:#fff;
@@ -34,22 +35,22 @@
 			<p>Lucy model from <a href="http://graphics.stanford.edu/data/3Dscanrep/">Stanford 3d scanning repository</a>
 			(decimated with <a href="http://meshlab.sourceforge.net/">Meshlab</a>).
 
-			<p>Please be patient while the mesh is loading. It may take a while, it's 2MB file.
+			<p>Please be patient while the mesh is loading. It may take a while, it's 2 MB file.
 
 			<br/>
-			<p>Best viewed in Chrome 8/9 or Firefox 4 using WebGL renderer.
+			<p>Best viewed in Chrome or Firefox using WebGL renderer.
 			<p>Canvas renderer is very slow for this demo and only diffuse material works there.
 			<p>Use the flag --allow-file-access-from-files if working localy in Chrome.
 		</div>
 
 		<pre id="log"></pre>
 
-		<script type="text/javascript" src="../build/Three.js"></script>
+		<script src="../build/Three.js"></script>
 
-		<script type="text/javascript" src="js/RequestAnimationFrame.js"></script>
-		<script type="text/javascript" src="js/Stats.js"></script>
+		<script src="js/RequestAnimationFrame.js"></script>
+		<script src="js/Stats.js"></script>
 
-		<script type="text/javascript">
+		<script>
 
 			var SCREEN_WIDTH = window.innerWidth;
 			var SCREEN_HEIGHT = window.innerHeight;
@@ -88,16 +89,12 @@
 			function addMesh( geometry, scale, x, y, z, rx, ry, rz, material ) {
 
 				mesh = new THREE.Mesh( geometry, material );
-				mesh.scale.x = mesh.scale.y = mesh.scale.z = scale;
-				mesh.position.x = x;
-				mesh.position.y = y;
-				mesh.position.z = z;
-				mesh.rotation.x = rx;
-				mesh.rotation.y = ry;
-				mesh.rotation.z = rz;
-				mesh.overdraw = true;
-				mesh.updateMatrix();
-				scene.addObject(mesh);
+
+				mesh.scale.set( scale, scale, scale );
+				mesh.position.set( x, y, z );
+				mesh.rotation.set( rx, ry, rz );
+
+				scene.add( mesh );
 
 			}
 
@@ -106,56 +103,53 @@
 				container = document.createElement( 'div' );
 				document.body.appendChild( container );
 
-				camera = new THREE.Camera( 50, SCREEN_WIDTH / SCREEN_HEIGHT, 1, 100000 );
+				camera = new THREE.PerspectiveCamera( 50, SCREEN_WIDTH / SCREEN_HEIGHT, 1, 100000 );
 				camera.position.z = 1500;
-				camera.updateMatrix();
 
 				scene = new THREE.Scene();
 
 				// LIGHTS
 
 				var ambient = new THREE.AmbientLight( 0x101010 );
-				scene.addLight( ambient );
+				scene.add( ambient );
 
 				directionalLight = new THREE.DirectionalLight( 0xffffff, 0.5 );
-				directionalLight.position.x = 1;
-				directionalLight.position.y = 1;
-				directionalLight.position.z = 2;
-				directionalLight.position.normalize();
-				scene.addLight( directionalLight );
+				directionalLight.position.set( 1, 1, 2 ).normalize();
+				scene.add( directionalLight );
 
 				pointLight = new THREE.PointLight( 0xffaa00 );
-				pointLight.position.x = 0;
-				pointLight.position.y = 0;
-				pointLight.position.z = 0;
-				scene.addLight( pointLight );
+				pointLight.position.set( 0, 0, 0 );
+				scene.add( pointLight );
 
 				// light representation
+
 				sphere = new THREE.SphereGeometry( 100, 16, 8, 1 );
 				lightMesh = new THREE.Mesh( sphere, new THREE.MeshBasicMaterial( { color: 0xffaa00 } ) );
-				lightMesh.scale.x = lightMesh.scale.y = lightMesh.scale.z = 0.05;
+				lightMesh.scale.set( 0.05, 0.05, 0.05 );
 				lightMesh.position = pointLight.position;
-				lightMesh.overdraw = true;
-				lightMesh.updateMatrix();
-				scene.addObject( lightMesh );
+				scene.add( lightMesh );
 
 
 				if ( render_gl ) {
 					try {
-						webglRenderer = new THREE.WebGLRenderer();
+
+						webglRenderer = new THREE.WebGLRenderer( { antialias: true } );
 						webglRenderer.setSize( SCREEN_WIDTH, SCREEN_HEIGHT );
 						webglRenderer.domElement.style.position = "relative";
 						container.appendChild( webglRenderer.domElement );
 						has_gl = 1;
+
 					}
 					catch (e) {
 					}
 				}
 
 				if( render_canvas ) {
+
 					canvasRenderer = new THREE.CanvasRenderer();
 					canvasRenderer.setSize( SCREEN_WIDTH, SCREEN_HEIGHT );
 					container.appendChild( canvasRenderer.domElement );
+
 				}
 
 
@@ -172,11 +166,11 @@
 				//loader = new THREE.JSONLoader( true );
 				document.body.appendChild( loader.statusDomElement );
 
-				var s = (new Date).getTime(),
+				var s = Date.now(),
 					callback = function( geometry ) { createScene( geometry, s ) };
 
-				//loader.load( { model: 'obj/lucy/Lucy100k_slim.js', callback: callback } );
-				loader.load( { model: 'obj/lucy/Lucy100k_bin.js', callback: callback } );
+				//loader.load( 'obj/lucy/Lucy100k_slim.js', callback );
+				loader.load( 'obj/lucy/Lucy100k_bin.js', callback );
 
 			}
 
@@ -193,11 +187,11 @@
 				log( "geometry.vertices: " + geometry.vertices.length );
 				log( "geometry.faces: " + geometry.faces.length );
 
-				log( "model loaded and created in " + ((new Date).getTime() - start) + " ms" );
+				log( "model loaded and created in " + ( Date.now() - start ) + " ms" );
 
 			}
 
-			function onDocumentMouseMove(event) {
+			function onDocumentMouseMove( event ) {
 
 				mouseX = ( event.clientX - windowHalfX );
 				mouseY = ( event.clientY - windowHalfY );
@@ -221,23 +215,22 @@
 
 				camera.position.x += ( mouseX - camera.position.x ) * .05;
 				camera.position.y += ( - mouseY - camera.position.y ) * .05;
-				camera.updateMatrix();
 
-				lightMesh.position.x = 700*Math.cos(r);
-				lightMesh.position.z = 700*Math.sin(r);
-				lightMesh.updateMatrix();
+				camera.lookAt( scene.position );
+
+				lightMesh.position.x = 700 * Math.cos( r );
+				lightMesh.position.z = 700 * Math.sin( r );
 
 				r += 0.01;
-
 
 				if ( render_canvas ) canvasRenderer.render( scene, camera );
 				if ( render_gl && has_gl ) webglRenderer.render( scene, camera );
 
 			}
 
-			function log(text) {
+			function log( text ) {
 
-				var e = document.getElementById("log");
+				var e = document.getElementById( "log" );
 				e.innerHTML = text + "<br/>" + e.innerHTML;
 
 			}
@@ -271,6 +264,7 @@
 				canvasRenderer.domElement.style.display = render_canvas ? "block" : "none";
 
 			}
+
 		</script>
 
 	</body>

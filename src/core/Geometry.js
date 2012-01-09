@@ -3,18 +3,19 @@
  * @author kile / http://kile.stravaganza.org/
  * @author alteredq / http://alteredqualia.com/
  * @author mikael emtinger / http://gomo.se/
+ * @author zz85 / http://www.lab4games.net/zz85/blog
  */
 
 THREE.Geometry = function () {
 
-	this.id = "Geometry" + THREE.GeometryIdCounter ++;
+	this.id = THREE.GeometryCount ++;
 
 	this.vertices = [];
 	this.colors = []; // one-to-one vertex colors, used in ParticleSystem, Line and Ribbon
 
-	this.faces = [];
+	this.materials = [];
 
-	this.edges = [];
+	this.faces = [];
 
 	this.faceUvs = [[]];
 	this.faceVertexUvs = [[]];
@@ -30,9 +31,44 @@ THREE.Geometry = function () {
 
 	this.hasTangents = false;
 
+	this.dynamic = false; // unless set to true the *Arrays will be deleted once sent to a buffer.
+
 };
 
 THREE.Geometry.prototype = {
+
+	constructor : THREE.Geometry,
+
+	applyMatrix: function ( matrix ) {
+
+		var matrixRotation = new THREE.Matrix4();
+		matrixRotation.extractRotation( matrix, new THREE.Vector3( 1, 1, 1 ) );
+
+		for ( var i = 0, il = this.vertices.length; i < il; i ++ ) {
+
+			var vertex = this.vertices[ i ];
+
+			matrix.multiplyVector3( vertex.position );
+
+		}
+
+		for ( var i = 0, il = this.faces.length; i < il; i ++ ) {
+
+			var face = this.faces[ i ];
+
+			matrixRotation.multiplyVector3( face.normal );
+
+			for ( var j = 0, jl = face.vertexNormals.length; j < jl; j ++ ) {
+
+				matrixRotation.multiplyVector3( face.vertexNormals[ j ] );
+
+			}
+
+			matrix.multiplyVector3( face.centroid );
+
+		}
+
+	},
 
 	computeCentroids: function () {
 
@@ -64,63 +100,30 @@ THREE.Geometry.prototype = {
 
 	},
 
-	computeFaceNormals: function ( useVertexNormals ) {
+	computeFaceNormals: function () {
 
 		var n, nl, v, vl, vertex, f, fl, face, vA, vB, vC,
 		cb = new THREE.Vector3(), ab = new THREE.Vector3();
-
-		/*
-		for ( v = 0, vl = this.vertices.length; v < vl; v ++ ) {
-
-			vertex = this.vertices[ v ];
-			vertex.normal.set( 0, 0, 0 );
-
-		}
-		*/
 
 		for ( f = 0, fl = this.faces.length; f < fl; f ++ ) {
 
 			face = this.faces[ f ];
 
-			if ( useVertexNormals && face.vertexNormals.length  ) {
+			vA = this.vertices[ face.a ];
+			vB = this.vertices[ face.b ];
+			vC = this.vertices[ face.c ];
 
-				cb.set( 0, 0, 0 );
+			cb.sub( vC.position, vB.position );
+			ab.sub( vA.position, vB.position );
+			cb.crossSelf( ab );
 
-				for ( n = 0, nl = face.vertexNormals.length; n < nl; n++ ) {
+			if ( !cb.isZero() ) {
 
-					cb.addSelf( face.vertexNormals[n] );
-
-				}
-
-				cb.divideScalar( 3 );
-
-				if ( ! cb.isZero() ) {
-
-					cb.normalize();
-
-				}
-
-				face.normal.copy( cb );
-
-			} else {
-
-				vA = this.vertices[ face.a ];
-				vB = this.vertices[ face.b ];
-				vC = this.vertices[ face.c ];
-
-				cb.sub( vC.position, vB.position );
-				ab.sub( vA.position, vB.position );
-				cb.crossSelf( ab );
-
-				if ( !cb.isZero() ) {
-
-					cb.normalize();
-
-				}
-
-				face.normal.copy( cb );
+				cb.normalize();
 
 			}
+
+			face.normal.copy( cb );
 
 		}
 
@@ -133,7 +136,7 @@ THREE.Geometry.prototype = {
 		// create internal buffers for reuse when calling this method repeatedly
 		// (otherwise memory allocation / deallocation every frame is big resource hog)
 
-		if ( this.__tmpVertices == undefined ) {
+		if ( this.__tmpVertices === undefined ) {
 
 			this.__tmpVertices = new Array( this.vertices.length );
 			vertices = this.__tmpVertices;
@@ -402,42 +405,44 @@ THREE.Geometry.prototype = {
 
 	},
 
-	computeEdgeFaces: function () {
+	/*
+	 * Checks for duplicate vertices with hashmap.
+	 * Duplicated vertices are removed
+	 * and faces' vertices are updated.
+	 */
 
-		function edge_hash( a, b ) {
+	mergeVertices: function() {
 
-			return Math.min( a, b ) + "_" + Math.max( a, b );
+		var verticesMap = {}; // Hashmap for looking up vertice by position coordinates (and making sure they are unique)
+		var unique = [], changes = [];
 
-		};
+		var v, key;
+		var precisionPoints = 4; // number of decimal points, eg. 4 for epsilon of 0.0001
+		var precision = Math.pow( 10, precisionPoints );
+		var i,il, face;
 
-		function addToMap( map, hash, i ) {
+		for ( i = 0, il = this.vertices.length; i < il; i ++ ) {
 
-			if ( map[ hash ] === undefined ) {
+			v = this.vertices[ i ].position;
+			key = [ Math.round( v.x * precision ), Math.round( v.y * precision ), Math.round( v.z * precision ) ].join( '_' );
 
-				map[ hash ] = { "set": {}, "array": [] };
-				map[ hash ].set[ i ] = 1;
-				map[ hash ].array.push( i );
+			if ( verticesMap[ key ] === undefined ) {
+
+				verticesMap[ key ] = i;
+				unique.push( this.vertices[ i ] );
+				changes[ i ] = unique.length - 1;
 
 			} else {
 
-				if( map[ hash ].set[ i ] === undefined ) {
-
-					map[ hash ].set[ i ] = 1;
-					map[ hash ].array.push( i );
-
-				}
+				//console.log('Duplicate vertex found. ', i, ' could be using ', verticesMap[key]);
+				changes[ i ] = changes[ verticesMap[ key ] ];
 
 			}
 
 		};
 
-		var i, il, v1, v2, j, k,
-			face, faceIndices, faceIndex,
-			edge,
-			hash,
-			vfMap = {};
 
-		// construct vertex -> face map
+		// Start to patch face indices
 
 		for( i = 0, il = this.faces.length; i < il; i ++ ) {
 
@@ -445,65 +450,27 @@ THREE.Geometry.prototype = {
 
 			if ( face instanceof THREE.Face3 ) {
 
-				hash = edge_hash( face.a, face.b );
-				addToMap( vfMap, hash, i );
-
-				hash = edge_hash( face.b, face.c );
-				addToMap( vfMap, hash, i );
-
-				hash = edge_hash( face.a, face.c );
-				addToMap( vfMap, hash, i );
+				face.a = changes[ face.a ];
+				face.b = changes[ face.b ];
+				face.c = changes[ face.c ];
 
 			} else if ( face instanceof THREE.Face4 ) {
 
-				// in WebGLRenderer quad is tesselated
-				// to triangles: a,b,d / b,c,d
-				// shared edge is: b,d
-
-				// should shared edge be included?
-				// comment out if not
-
-				hash = edge_hash( face.b, face.d ); 
-				addToMap( vfMap, hash, i );
-
-				hash = edge_hash( face.a, face.b );
-				addToMap( vfMap, hash, i );
-
-				hash = edge_hash( face.a, face.d );
-				addToMap( vfMap, hash, i );
-
-				hash = edge_hash( face.b, face.c );
-				addToMap( vfMap, hash, i );
-
-				hash = edge_hash( face.c, face.d );
-				addToMap( vfMap, hash, i );
+				face.a = changes[ face.a ];
+				face.b = changes[ face.b ];
+				face.c = changes[ face.c ];
+				face.d = changes[ face.d ];
 
 			}
 
 		}
 
-		// extract faces
+		// Use unique set of vertices
 
-		for( i = 0, il = this.edges.length; i < il; i ++ ) {
-
-			edge = this.edges[ i ];
-
-			v1 = edge.vertexIndices[ 0 ];
-			v2 = edge.vertexIndices[ 1 ];
-
-			edge.faceIndices = vfMap[ edge_hash( v1, v2 ) ].array;
-
-			for( j = 0; j < edge.faceIndices.length; j ++ ) {
-
-				faceIndex = edge.faceIndices[ j ];
-				edge.faces.push( this.faces[ faceIndex ] );
-
-			}
-
-		}
+		this.vertices = unique;
 
 	}
 
 };
 
-THREE.GeometryIdCounter = 0;
+THREE.GeometryCount = 0;

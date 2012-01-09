@@ -26,7 +26,9 @@
  *  wireframeLinewidth: <float>,
  *
  *  vertexColors: false / THREE.VertexColors / THREE.FaceColors,
- *  skinning: <bool>
+ *  skinning: <bool>,
+ *
+ *	fog: <bool>
  * }
  */
 
@@ -41,6 +43,9 @@ THREE.MeshPhongMaterial = function ( parameters ) {
 	this.specular = parameters.specular !== undefined ? new THREE.Color( parameters.specular ) : new THREE.Color( 0x111111 );
 	this.shininess = parameters.shininess !== undefined ? parameters.shininess : 30;
 
+	this.metal = parameters.metal !== undefined ? parameters.metal : false;
+	this.perPixel = parameters.perPixel !== undefined ? parameters.perPixel : false;
+
 	this.map = parameters.map !== undefined ? parameters.map : null;
 
 	this.lightMap = parameters.lightMap !== undefined ? parameters.lightMap : null;
@@ -50,7 +55,7 @@ THREE.MeshPhongMaterial = function ( parameters ) {
 	this.reflectivity = parameters.reflectivity !== undefined ? parameters.reflectivity : 1;
 	this.refractionRatio = parameters.refractionRatio !== undefined ? parameters.refractionRatio : 0.98;
 
-	// this.enableFog = parameters.enableFog ? parameters.enableFog : true;
+	this.fog = parameters.fog !== undefined ? parameters.fog : true;
 
 	this.shading = parameters.shading !== undefined ? parameters.shading : THREE.SmoothShading;
 

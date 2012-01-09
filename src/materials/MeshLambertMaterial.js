@@ -4,7 +4,9 @@
  *
  * parameters = {
  *  color: <hex>,
+ *  ambient: <hex>,
  *  opacity: <float>,
+ *
  *  map: new THREE.Texture( <Image> ),
  *
  *  lightMap: new THREE.Texture( <Image> ),
@@ -22,7 +24,9 @@
  *  wireframeLinewidth: <float>,
  *
  *  vertexColors: false / THREE.VertexColors / THREE.FaceColors,
- *  skinning: <bool>
+ *  skinning: <bool>,
+ *
+ *	fog: <bool>
  * }
  */
 
@@ -33,6 +37,7 @@ THREE.MeshLambertMaterial = function ( parameters ) {
 	parameters = parameters || {};
 
 	this.color = parameters.color !== undefined ? new THREE.Color( parameters.color ) : new THREE.Color( 0xffffff );
+	this.ambient = parameters.ambient !== undefined ? new THREE.Color( parameters.ambient ) : new THREE.Color( 0x050505 );
 
 	this.map = parameters.map !== undefined ? parameters.map : null;
 
@@ -43,7 +48,7 @@ THREE.MeshLambertMaterial = function ( parameters ) {
 	this.reflectivity = parameters.reflectivity !== undefined ? parameters.reflectivity : 1;
 	this.refractionRatio = parameters.refractionRatio !== undefined ? parameters.refractionRatio : 0.98;
 
-	// this.enableFog = parameters.enableFog ? parameters.enableFog : true;
+	this.fog = parameters.fog !== undefined ? parameters.fog : true;
 
 	this.shading = parameters.shading !== undefined ? parameters.shading : THREE.SmoothShading;
 
